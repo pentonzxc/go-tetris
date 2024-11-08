@@ -1,0 +1,3 @@
+- refactor code and clarify some code
+- code falling shapes
+- code stacking shapes
