@@ -137,7 +137,6 @@ func FallingShape(raster *canvas.Raster, block Block) {
 
 			DrawBlockInternal(newImg, block.color, pos.x*dx, (pos.x+1)*dx, pos.y*dy, (pos.y+1)*dy)
 			block.positions[i].y += 1
-
 		}
 
 		return newImg
@@ -179,7 +178,7 @@ func main() {
 
 	// w.ShowAndRun()
 
-	game := tetris.NewGame(600, 800)
+	game := tetris.NewTetrisGame(600, 800)
 
 	game.Start()
 }

@@ -10,30 +10,8 @@ import (
 	"fyne.io/fyne/v2/canvas"
 )
 
-const (
-	TETRIS_WIDTH  = 10
-	TETRIS_HEIGHT = 20
-)
-
-type Tetris interface {
-	Start()
-	Points() int
-	IsOver() bool
-}
-
-func NewGame(w, h int) Tetris {
-	// why reference here
-	return &GameFacade{
-		width:  w,
-		height: h,
-		state:  TetrisState{},
-	}
-}
-
-type TetrisState struct {
-	blocks     []Block
-	score      int
-	isGameOver bool
+type BlockPosition struct {
+	x, y int
 }
 
 type Block struct {
@@ -41,63 +19,148 @@ type Block struct {
 	color     color.Color
 }
 
-type BlockPosition struct {
-	x, y int
+type Tetris interface {
+	Start()
+	Points() int
+	IsOver() bool
 }
 
-// it's like an impl of Tetris
-type GameFacade struct {
+func NewTetrisGame(w, h int) Tetris {
+	// why reference here
+	return &TetrisFacade{
+		width:  w,
+		height: h,
+		state:  newTetrisState(),
+		drawer: newTetrisDrawer(image.NewRGBA(image.Rect(0, 0, w, h)), func() {}),
+	}
+}
+
+type TetrisState struct {
+	blocks     []Block
+	positions  map[BlockPosition]bool
+	score      int
+	isGameOver bool
+}
+
+func newTetrisState() TetrisState {
+	return TetrisState{
+		blocks:     make([]Block, 4),
+		positions:  make(map[BlockPosition]bool),
+		score:      0,
+		isGameOver: false,
+	}
+}
+
+func (s *TetrisState) addBlock(block Block) {
+	s.blocks = append(s.blocks, block)
+
+	for _, pos := range block.positions {
+		s.positions[pos] = true
+	}
+}
+
+func (s *TetrisState) isCellsValid(block Block) bool {
+	for _, pos := range block.positions {
+		if !(pos.y < TETRIS_HEIGHT && pos.x < TETRIS_WIDTH) {
+			return false
+		}
+	}
+	return true
+}
+
+func (s *TetrisState) isCellsFree(block Block) bool {
+	for _, pos := range block.positions {
+		if s.positions[pos] {
+			return false
+		}
+	}
+	return true
+}
+
+type TetrisFacade struct {
 	width, height int
 	state         TetrisState
+	drawer        Drawer
 }
 
-func (g *GameFacade) Start() {
+func (g *TetrisFacade) Start() {
 	a := app.New()
 	w := a.NewWindow("Tetris")
-
-	dx := g.width / TETRIS_WIDTH
-	dy := g.height / TETRIS_HEIGHT
 
 	w.Resize(fyne.NewSize(float32(g.width), float32(g.height)))
 	w.SetFixedSize(true)
 
-	rawImage := image.NewRGBA(image.Rect(0, 0, g.width, g.height))
+	w.SetContent(canvas.NewImageFromImage(g.drawer.Init()))
 
-	// make a grid
-	for y := 0; y < g.height; y++ {
-		for x := 0; x < g.width; x++ {
-			var col color.Color
-
-			if x%dx == 0 || y%dy == 0 {
-				col = color.Black
-			} else {
-				col = color.White
-			}
-
-			rawImage.Set(x, y, col)
-		}
-	}
-
-	canvasImage := canvas.NewImageFromImage(rawImage)
-	w.SetContent(canvasImage)
-
-	go g.run(rawImage, func() { canvasImage.Refresh() })
+	go g.run(func() { w.Canvas().Content().Refresh() })
 
 	w.ShowAndRun()
 }
 
-func (g *GameFacade) run(image *image.RGBA, refresh func()) {
-	time.Sleep(3 * time.Second)
+func (g *TetrisFacade) run(refresh func()) {
 	Pink := color.RGBA{245, 40, 145, 255}
 
-	dx := g.width / TETRIS_WIDTH
-	dy := g.height / TETRIS_HEIGHT
+	for {
+		// here we like generate new blocks
 
-	drawBlock(image, Pink, dx*1, dx*2, dy*1, dy*2)
-	refresh()
+		prevBlock := Block{
+			positions: []BlockPosition{
+				BlockPosition{1, 1},
+				BlockPosition{2, 1},
+				BlockPosition{1, 0},
+			},
+			color: Pink,
+		}
+
+		for {
+			time.Sleep(200 * time.Millisecond)
+
+			curBlock := Block{
+				positions: make([]BlockPosition, len(prevBlock.positions)),
+				color:     prevBlock.color,
+			}
+
+			copy(curBlock.positions, prevBlock.positions)
+			for i := range curBlock.positions {
+				curBlock.positions[i].y += 1
+			}
+
+			if !g.state.isCellsValid(curBlock) || !g.state.isCellsFree(curBlock) {
+				g.state.addBlock(prevBlock)
+				break
+			} else {
+				g.drawer.UndoBlock(prevBlock)
+
+				g.drawer.DrawBlock(curBlock)
+				refresh()
+
+				prevBlock = curBlock
+			}
+		}
+
+		// outer logic
+	}
 }
 
-func drawBlock(image *image.RGBA, color color.Color, x1, x2, y1, y2 int) {
+func whiteBlockFor(block Block) Block {
+	var positions []BlockPosition = make([]BlockPosition, len(block.positions))
+	copy(positions, block.positions)
+	return Block{
+		color:     color.White,
+		positions: positions,
+	}
+}
+
+func drawBlock(image *image.RGBA, block Block, w, h int) {
+	dx := w / TETRIS_WIDTH
+	dy := h / TETRIS_HEIGHT
+
+	for _, pos := range block.positions {
+		drawBlockInternal(image, block.color, pos.x*dx+1, (pos.x+1)*dx, pos.y*dy+1, (pos.y+1)*dy)
+	}
+}
+
+func drawBlockInternal(image *image.RGBA, color color.Color, x1, x2, y1, y2 int) {
 	for y := y1; y < y2; y++ {
 		for x := x1; x < x2; x++ {
 			image.Set(x, y, color)
@@ -105,22 +168,22 @@ func drawBlock(image *image.RGBA, color color.Color, x1, x2, y1, y2 int) {
 	}
 }
 
-func (g *GameFacade) Points() int {
+func (g *TetrisFacade) Points() int {
 	return g.state.score
 }
 
-func (g *GameFacade) IsOver() bool {
+func (g *TetrisFacade) IsOver() bool {
 	return g.state.isGameOver
 }
 
-func (g *GameFacade) MoveLeft() {
+func (g *TetrisFacade) MoveLeft() {
 	// logic to move the current block left
 }
 
-func (g *GameFacade) MoveRight() {
+func (g *TetrisFacade) MoveRight() {
 	// logic to move the current block right
 }
 
-func (g *GameFacade) Rotate() {
+func (g *TetrisFacade) Rotate() {
 	// logic to rotate the current block
 }
