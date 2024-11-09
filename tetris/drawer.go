@@ -27,27 +27,51 @@ type TetrisDrawer struct {
 }
 
 func (drawer *TetrisDrawer) DrawBlock(block Block) {
-	for _, pos := range block.positions {
-		drawer.drawCell(pos, block.color)
+	for y := 0; y < len(block.blocks); y++ {
+		for x := 0; x < len(block.blocks[0]); x++ {
+			if block.blocks[x][y] {
+				drawer.drawCell(BlockPosition{block.x + x, block.y + y}, block.color)
+
+			}
+		}
 	}
 }
 
 func (drawer *TetrisDrawer) UndoBlock(block Block) {
-	for _, pos := range block.positions {
-		drawer.drawCell(pos, color.White)
+	for y := 0; y < len(block.blocks); y++ {
+		for x := 0; x < len(block.blocks[0]); x++ {
+			if block.blocks[x][y] {
+				drawer.drawCell(BlockPosition{block.x + x, block.y + y}, color.White)
+			}
+		}
 	}
 }
 
 func (drawer *TetrisDrawer) Rotate(block Block) Block {
-	panic("not implemented")
+	matrix := block.blocks
+
+	for i, j := 0, len(matrix)-1; i < j; i, j = i+1, j-1 {
+		matrix[i], matrix[j] = matrix[j], matrix[i]
+	}
+
+	// transpose it
+	for i := 0; i < len(matrix); i++ {
+		for j := 0; j < i; j++ {
+			matrix[i][j], matrix[j][i] = matrix[j][i], matrix[i][j]
+		}
+	}
+
+	return block
 }
 
 func (drawer *TetrisDrawer) MoveLeft(block Block) Block {
-	panic("not implemented")
+	block.x -= 1
+	return block
 }
 
 func (drawer *TetrisDrawer) MoveRight(block Block) Block {
-	panic("not implemented")
+	block.x += 1
+	return block
 }
 
 func (drawer *TetrisDrawer) Refresh() {

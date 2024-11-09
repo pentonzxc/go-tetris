@@ -1,8 +1,10 @@
 package tetris
 
 import (
+	"fmt"
 	"image"
 	"image/color"
+	"sync"
 	"time"
 
 	"fyne.io/fyne/v2"
@@ -15,8 +17,9 @@ type BlockPosition struct {
 }
 
 type Block struct {
-	positions []BlockPosition
-	color     color.Color
+	blocks [][]bool
+	x, y   int
+	color  color.Color
 }
 
 type Tetris interface {
@@ -36,44 +39,64 @@ func NewTetrisGame(w, h int) Tetris {
 }
 
 type TetrisState struct {
-	blocks     []Block
-	positions  map[BlockPosition]bool
+	blocks     [][]bool
 	score      int
 	isGameOver bool
+	lastBlock  Block
 }
 
 func newTetrisState() TetrisState {
+	arr := make([][]bool, TETRIS_HEIGHT)
+	for i := 0; i < TETRIS_HEIGHT; i++ {
+		arr[i] = make([]bool, TETRIS_WIDTH)
+	}
+
 	return TetrisState{
-		blocks:     make([]Block, 4),
-		positions:  make(map[BlockPosition]bool),
+		blocks:     arr,
 		score:      0,
 		isGameOver: false,
 	}
 }
 
 func (s *TetrisState) addBlock(block Block) {
-	s.blocks = append(s.blocks, block)
-
-	for _, pos := range block.positions {
-		s.positions[pos] = true
+	for y := 0; y < len(block.blocks); y++ {
+		for x := 0; x < len(block.blocks[0]); x++ {
+			if block.blocks[x][y] {
+				s.blocks[block.y+y][block.x+x] = true
+			}
+		}
 	}
 }
 
 func (s *TetrisState) isCellsValid(block Block) bool {
-	for _, pos := range block.positions {
-		if !(pos.y < TETRIS_HEIGHT && pos.x < TETRIS_WIDTH) {
-			return false
+	if !(block.y < TETRIS_HEIGHT && block.x < TETRIS_WIDTH) {
+		return false
+	}
+
+	for y := 0; y < len(block.blocks); y++ {
+		for x := 0; x < len(block.blocks[0]); x++ {
+			if block.blocks[x][y] {
+				if !(block.y+y < TETRIS_HEIGHT && block.x+x < TETRIS_WIDTH) {
+					return false
+				}
+			}
 		}
 	}
+
 	return true
 }
 
 func (s *TetrisState) isCellsFree(block Block) bool {
-	for _, pos := range block.positions {
-		if s.positions[pos] {
-			return false
+	for y := 0; y < len(block.blocks); y++ {
+		for x := 0; x < len(block.blocks[0]); x++ {
+			if block.blocks[x][y] {
+				if s.blocks[block.y+y][block.x+x] {
+					return false
+				}
+			}
 		}
 	}
+
 	return true
 }
 
@@ -81,6 +104,7 @@ type TetrisFacade struct {
 	width, height int
 	state         TetrisState
 	drawer        Drawer
+	mutex         sync.Mutex
 }
 
 func (g *TetrisFacade) Start() {
@@ -92,6 +116,24 @@ func (g *TetrisFacade) Start() {
 
 	w.SetContent(canvas.NewImageFromImage(g.drawer.Init()))
 
+	w.Canvas().SetOnTypedKey(func(event *fyne.KeyEvent) {
+		g.mutex.Lock()
+
+		switch event.Name {
+		case "Up":
+			fmt.Println(g.state.lastBlock)
+			g.drawer.UndoBlock(g.state.lastBlock)
+			fmt.Println("Do rotate")
+			g.drawer.DrawBlock(g.drawer.Rotate(g.state.lastBlock))
+			w.Canvas().Content().Refresh()
+		case "Left":
+			// g.drawer.MoveLeft(g.state.failingBlock)
+		case "Right":
+			// g.drawer.MoveRight(g.state.failingBlock)
+		}
+		g.mutex.Unlock()
+	})
+
 	go g.run(func() { w.Canvas().Content().Refresh() })
 
 	w.ShowAndRun()
@@ -102,69 +144,54 @@ func (g *TetrisFacade) run(refresh func()) {
 
 	for {
 		// here we like generate new blocks
-
 		prevBlock := Block{
-			positions: []BlockPosition{
-				BlockPosition{1, 1},
-				BlockPosition{2, 1},
-				BlockPosition{1, 0},
+			[][]bool{
+				{true, false},
+				{true, true},
 			},
-			color: Pink,
+			TETRIS_WIDTH / 2,
+			0,
+			Pink,
 		}
 
+		// left := g.drawer.Rotate(prevBlock)
 		for {
-			time.Sleep(200 * time.Millisecond)
-
 			curBlock := Block{
-				positions: make([]BlockPosition, len(prevBlock.positions)),
-				color:     prevBlock.color,
+				blocks: prevBlock.blocks,
+				x:      prevBlock.x,
+				y:      prevBlock.y,
+				color:  prevBlock.color,
 			}
 
-			copy(curBlock.positions, prevBlock.positions)
-			for i := range curBlock.positions {
-				curBlock.positions[i].y += 1
-			}
+			// copy(curBlock.positions, prevBlock.positions)
+
+			g.state.lastBlock = curBlock
+
+			g.mutex.Lock()
+
+			curBlock.y += 1
 
 			if !g.state.isCellsValid(curBlock) || !g.state.isCellsFree(curBlock) {
 				g.state.addBlock(prevBlock)
+
+				g.mutex.Unlock()
+
 				break
 			} else {
-				g.drawer.UndoBlock(prevBlock)
-
-				g.drawer.DrawBlock(curBlock)
+				// g.drawer.UndoBlock(prevBlock)
+				// g.drawer.DrawBlock(curBlock)
 				refresh()
 
+				// g.state.failingBlock = curBlock
 				prevBlock = curBlock
 			}
+
+			g.mutex.Unlock()
+
+			time.Sleep(200 * time.Millisecond)
 		}
 
 		// outer logic
-	}
-}
-
-func whiteBlockFor(block Block) Block {
-	var positions []BlockPosition = make([]BlockPosition, len(block.positions))
-	copy(positions, block.positions)
-	return Block{
-		color:     color.White,
-		positions: positions,
-	}
-}
-
-func drawBlock(image *image.RGBA, block Block, w, h int) {
-	dx := w / TETRIS_WIDTH
-	dy := h / TETRIS_HEIGHT
-
-	for _, pos := range block.positions {
-		drawBlockInternal(image, block.color, pos.x*dx+1, (pos.x+1)*dx, pos.y*dy+1, (pos.y+1)*dy)
-	}
-}
-
-func drawBlockInternal(image *image.RGBA, color color.Color, x1, x2, y1, y2 int) {
-	for y := y1; y < y2; y++ {
-		for x := x1; x < x2; x++ {
-			image.Set(x, y, color)
-		}
 	}
 }
 
@@ -174,16 +201,4 @@ func (g *TetrisFacade) Points() int {
 
 func (g *TetrisFacade) IsOver() bool {
 	return g.state.isGameOver
-}
-
-func (g *TetrisFacade) MoveLeft() {
-	// logic to move the current block left
-}
-
-func (g *TetrisFacade) MoveRight() {
-	// logic to move the current block right
-}
-
-func (g *TetrisFacade) Rotate() {
-	// logic to rotate the current block
 }
