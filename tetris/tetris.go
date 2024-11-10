@@ -200,15 +200,16 @@ func (g *TetrisFacade) processCommands(refresh func()) {
 
 				if g.state.isCellsValid(*last) && g.state.isCellsFree(*last) {
 					g.commandQueue <- Place
-					g.commandQueue <- MoveDown
+					go time.AfterFunc(500*time.Millisecond, func() {
+						g.commandQueue <- MoveDown
+					})
 				} else {
 					g.state.addBlock(prev)
 
 					g.state.lastBlock = nil
+
 					g.commandQueue <- Generate
 				}
-
-				time.Sleep(200 * time.Millisecond)
 			}
 
 			refresh()
