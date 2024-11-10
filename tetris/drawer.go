@@ -10,6 +10,10 @@ const (
 	TETRIS_HEIGHT = 20
 )
 
+type BlockPosition struct {
+	x, y int
+}
+
 type Drawer interface {
 	UndoBlock(Block)
 	DrawBlock(Block)
@@ -29,9 +33,8 @@ type TetrisDrawer struct {
 func (drawer *TetrisDrawer) DrawBlock(block Block) {
 	for y := 0; y < len(block.blocks); y++ {
 		for x := 0; x < len(block.blocks[0]); x++ {
-			if block.blocks[x][y] {
+			if block.blocks[y][x] {
 				drawer.drawCell(BlockPosition{block.x + x, block.y + y}, block.color)
-
 			}
 		}
 	}
@@ -40,7 +43,7 @@ func (drawer *TetrisDrawer) DrawBlock(block Block) {
 func (drawer *TetrisDrawer) UndoBlock(block Block) {
 	for y := 0; y < len(block.blocks); y++ {
 		for x := 0; x < len(block.blocks[0]); x++ {
-			if block.blocks[x][y] {
+			if block.blocks[y][x] {
 				drawer.drawCell(BlockPosition{block.x + x, block.y + y}, color.White)
 			}
 		}
@@ -48,7 +51,13 @@ func (drawer *TetrisDrawer) UndoBlock(block Block) {
 }
 
 func (drawer *TetrisDrawer) Rotate(block Block) Block {
-	matrix := block.blocks
+	rotated := make([][]bool, len(block.blocks))
+	for i := range rotated {
+		rotated[i] = make([]bool, len(block.blocks[0]))
+		copy(rotated[i], block.blocks[i])
+	}
+
+	matrix := rotated
 
 	for i, j := 0, len(matrix)-1; i < j; i, j = i+1, j-1 {
 		matrix[i], matrix[j] = matrix[j], matrix[i]
@@ -61,7 +70,7 @@ func (drawer *TetrisDrawer) Rotate(block Block) Block {
 		}
 	}
 
-	return block
+	return Block{blocks: rotated, x: block.x, y: block.y, color: block.color}
 }
 
 func (drawer *TetrisDrawer) MoveLeft(block Block) Block {

@@ -1,10 +1,8 @@
 package tetris
 
 import (
-	"fmt"
 	"image"
 	"image/color"
-	"sync"
 	"time"
 
 	"fyne.io/fyne/v2"
@@ -12,9 +10,16 @@ import (
 	"fyne.io/fyne/v2/canvas"
 )
 
-type BlockPosition struct {
-	x, y int
-}
+type Command string
+
+const (
+	Rotate    Command = "rotate"
+	MoveLeft  Command = "moveLeft"
+	MoveRight Command = "moveRight"
+	MoveDown  Command = "moveDown"
+	Place     Command = "place"
+	Generate  Command = "generate"
+)
 
 type Block struct {
 	blocks [][]bool
@@ -28,21 +33,31 @@ type Tetris interface {
 	IsOver() bool
 }
 
-func NewTetrisGame(w, h int) Tetris {
-	// why reference here
-	return &TetrisFacade{
-		width:  w,
-		height: h,
-		state:  newTetrisState(),
-		drawer: newTetrisDrawer(image.NewRGBA(image.Rect(0, 0, w, h)), func() {}),
-	}
-}
-
 type TetrisState struct {
 	blocks     [][]bool
 	score      int
 	isGameOver bool
-	lastBlock  Block
+
+	// can be nil
+	lastBlock *Block
+}
+
+type TetrisFacade struct {
+	width, height int
+	state         TetrisState
+	drawer        Drawer
+	commandQueue  chan Command
+}
+
+func NewTetrisGame(w, h int) Tetris {
+	// why reference here
+	return &TetrisFacade{
+		width:        w,
+		height:       h,
+		state:        newTetrisState(),
+		drawer:       newTetrisDrawer(image.NewRGBA(image.Rect(0, 0, w, h)), func() {}),
+		commandQueue: make(chan Command, 10),
+	}
 }
 
 func newTetrisState() TetrisState {
@@ -61,7 +76,7 @@ func newTetrisState() TetrisState {
 func (s *TetrisState) addBlock(block Block) {
 	for y := 0; y < len(block.blocks); y++ {
 		for x := 0; x < len(block.blocks[0]); x++ {
-			if block.blocks[x][y] {
+			if block.blocks[y][x] {
 				s.blocks[block.y+y][block.x+x] = true
 			}
 		}
@@ -75,8 +90,9 @@ func (s *TetrisState) isCellsValid(block Block) bool {
 
 	for y := 0; y < len(block.blocks); y++ {
 		for x := 0; x < len(block.blocks[0]); x++ {
-			if block.blocks[x][y] {
-				if !(block.y+y < TETRIS_HEIGHT && block.x+x < TETRIS_WIDTH) {
+			if block.blocks[y][x] {
+				cellY, cellX := block.y+y, block.x+x
+				if cellY < 0 || cellY >= TETRIS_HEIGHT || cellX < 0 || cellX >= TETRIS_WIDTH {
 					return false
 				}
 			}
@@ -89,22 +105,19 @@ func (s *TetrisState) isCellsValid(block Block) bool {
 func (s *TetrisState) isCellsFree(block Block) bool {
 	for y := 0; y < len(block.blocks); y++ {
 		for x := 0; x < len(block.blocks[0]); x++ {
-			if block.blocks[x][y] {
-				if s.blocks[block.y+y][block.x+x] {
-					return false
+			if block.blocks[y][x] {
+				cellY, cellX := block.y+y, block.x+x
+				if cellY < 0 || cellY >= TETRIS_HEIGHT || cellX < 0 || cellX >= TETRIS_WIDTH {
+					return false // Out of bounds
+				}
+				if s.blocks[cellY][cellX] {
+					return false // Cell is occupied
 				}
 			}
 		}
 	}
 
 	return true
-}
-
-type TetrisFacade struct {
-	width, height int
-	state         TetrisState
-	drawer        Drawer
-	mutex         sync.Mutex
 }
 
 func (g *TetrisFacade) Start() {
@@ -117,81 +130,104 @@ func (g *TetrisFacade) Start() {
 	w.SetContent(canvas.NewImageFromImage(g.drawer.Init()))
 
 	w.Canvas().SetOnTypedKey(func(event *fyne.KeyEvent) {
-		g.mutex.Lock()
-
 		switch event.Name {
 		case "Up":
-			fmt.Println(g.state.lastBlock)
-			g.drawer.UndoBlock(g.state.lastBlock)
-			fmt.Println("Do rotate")
-			g.drawer.DrawBlock(g.drawer.Rotate(g.state.lastBlock))
-			w.Canvas().Content().Refresh()
+			g.commandQueue <- Rotate
 		case "Left":
-			// g.drawer.MoveLeft(g.state.failingBlock)
+			g.commandQueue <- MoveLeft
 		case "Right":
-			// g.drawer.MoveRight(g.state.failingBlock)
+			g.commandQueue <- MoveRight
 		}
-		g.mutex.Unlock()
+
 	})
 
-	go g.run(func() { w.Canvas().Content().Refresh() })
+	go g.processCommands(func() { w.Canvas().Content().Refresh() })
+	g.commandQueue <- Generate
 
 	w.ShowAndRun()
 }
 
-func (g *TetrisFacade) run(refresh func()) {
+func (g *TetrisFacade) processCommands(refresh func()) {
+	for command := range g.commandQueue {
+		if g.state.lastBlock != nil || command == Generate {
+			var prev Block
+			last := g.state.lastBlock
+			if last != nil {
+				prev = *last
+				prev.y -= 1
+			}
+
+			switch command {
+			case Rotate:
+				rotated := g.drawer.Rotate(*last)
+				if g.state.isCellsValid(rotated) && g.state.isCellsFree(rotated) {
+					g.drawer.UndoBlock(*last)
+					g.drawer.DrawBlock(rotated)
+
+					g.state.lastBlock = &rotated
+				}
+			case MoveLeft:
+				moved := g.drawer.MoveLeft(*last)
+				if g.state.isCellsValid(moved) && g.state.isCellsFree(moved) {
+					g.drawer.UndoBlock(*last)
+					g.drawer.DrawBlock(moved)
+
+					g.state.lastBlock = &moved
+				}
+			case MoveRight:
+				moved := g.drawer.MoveRight(*last)
+				if g.state.isCellsValid(moved) && g.state.isCellsFree(moved) {
+					g.drawer.UndoBlock(*last)
+					g.drawer.DrawBlock(moved)
+
+					g.state.lastBlock = &moved
+				}
+			case Place:
+				// fmt.Println("Place command", *last)
+				g.drawer.UndoBlock(prev)
+				g.drawer.DrawBlock(*last)
+
+				last.y += 1
+
+			case Generate:
+				// fmt.Println("Generate command")
+				new := generateBlock()
+				g.state.lastBlock = &new
+
+				g.commandQueue <- MoveDown
+			case MoveDown:
+				// fmt.Println("MoveDown command")
+
+				if !(g.state.isCellsValid(*last) && g.state.isCellsFree(*last)) {
+
+					g.state.addBlock(prev)
+
+					g.state.lastBlock = nil
+					g.commandQueue <- Generate
+				} else {
+					g.commandQueue <- Place
+					g.commandQueue <- MoveDown
+				}
+
+				time.Sleep(200 * time.Millisecond)
+			}
+
+			refresh()
+		}
+	}
+
+}
+
+func generateBlock() Block {
 	Pink := color.RGBA{245, 40, 145, 255}
-
-	for {
-		// here we like generate new blocks
-		prevBlock := Block{
-			[][]bool{
-				{true, false},
-				{true, true},
-			},
-			TETRIS_WIDTH / 2,
-			0,
-			Pink,
-		}
-
-		// left := g.drawer.Rotate(prevBlock)
-		for {
-			curBlock := Block{
-				blocks: prevBlock.blocks,
-				x:      prevBlock.x,
-				y:      prevBlock.y,
-				color:  prevBlock.color,
-			}
-
-			// copy(curBlock.positions, prevBlock.positions)
-
-			g.state.lastBlock = curBlock
-
-			g.mutex.Lock()
-
-			curBlock.y += 1
-
-			if !g.state.isCellsValid(curBlock) || !g.state.isCellsFree(curBlock) {
-				g.state.addBlock(prevBlock)
-
-				g.mutex.Unlock()
-
-				break
-			} else {
-				// g.drawer.UndoBlock(prevBlock)
-				// g.drawer.DrawBlock(curBlock)
-				refresh()
-
-				// g.state.failingBlock = curBlock
-				prevBlock = curBlock
-			}
-
-			g.mutex.Unlock()
-
-			time.Sleep(200 * time.Millisecond)
-		}
-
-		// outer logic
+	return Block{
+		[][]bool{
+			{true, false},
+			{true, true},
+		},
+		TETRIS_WIDTH / 2,
+		0,
+		Pink,
 	}
 }
 
