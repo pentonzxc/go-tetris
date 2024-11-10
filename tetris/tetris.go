@@ -1,7 +1,6 @@
 package tetris
 
 import (
-	"fmt"
 	"image"
 	"image/color"
 	"time"
@@ -84,26 +83,8 @@ func (s *TetrisState) addBlock(block Block) {
 	}
 }
 
+// check borders and free of cells
 func (s *TetrisState) isCellsValid(block Block) bool {
-	if !(block.y < TETRIS_HEIGHT && block.x < TETRIS_WIDTH) {
-		return false
-	}
-
-	for y := 0; y < len(block.blocks); y++ {
-		for x := 0; x < len(block.blocks[0]); x++ {
-			if block.blocks[y][x] {
-				cellY, cellX := block.y+y, block.x+x
-				if cellY < 0 || cellY >= TETRIS_HEIGHT || cellX < 0 || cellX >= TETRIS_WIDTH {
-					return false
-				}
-			}
-		}
-	}
-
-	return true
-}
-
-func (s *TetrisState) isCellsFree(block Block) bool {
 	for y := 0; y < len(block.blocks); y++ {
 		for x := 0; x < len(block.blocks[0]); x++ {
 			if block.blocks[y][x] {
@@ -111,8 +92,8 @@ func (s *TetrisState) isCellsFree(block Block) bool {
 				if cellY < 0 || cellY >= TETRIS_HEIGHT || cellX < 0 || cellX >= TETRIS_WIDTH {
 					return false // Out of bounds
 				}
+
 				if s.blocks[cellY][cellX] {
-					fmt.Println(cellY, cellX)
 					return false // Cell is occupied
 				}
 			}
@@ -154,6 +135,8 @@ func (g *TetrisFacade) processCommands(refresh func()) {
 		if g.state.lastBlock != nil || command == Generate {
 			var prev Block
 			last := g.state.lastBlock
+
+			// previous element
 			if last != nil {
 				prev = *last
 				prev.y -= 1
@@ -162,7 +145,7 @@ func (g *TetrisFacade) processCommands(refresh func()) {
 			switch command {
 			case Rotate:
 				rotated := g.drawer.Rotate(*last)
-				if g.state.isCellsValid(rotated) && g.state.isCellsFree(rotated) {
+				if g.state.isCellsValid(rotated) {
 					g.drawer.UndoBlock(*last)
 					g.drawer.UndoBlock(prev)
 					g.drawer.DrawBlock(rotated)
@@ -171,7 +154,7 @@ func (g *TetrisFacade) processCommands(refresh func()) {
 				}
 			case MoveLeft:
 				moved := g.drawer.MoveLeft(*last)
-				if g.state.isCellsValid(moved) && g.state.isCellsFree(moved) {
+				if g.state.isCellsValid(moved) {
 					g.drawer.UndoBlock(*last)
 					g.drawer.UndoBlock(prev)
 					g.drawer.DrawBlock(moved)
@@ -180,7 +163,7 @@ func (g *TetrisFacade) processCommands(refresh func()) {
 				}
 			case MoveRight:
 				moved := g.drawer.MoveRight(*last)
-				if g.state.isCellsValid(moved) && g.state.isCellsFree(moved) {
+				if g.state.isCellsValid(moved) {
 					g.drawer.UndoBlock(*last)
 					g.drawer.UndoBlock(prev)
 					g.drawer.DrawBlock(moved)
@@ -196,16 +179,16 @@ func (g *TetrisFacade) processCommands(refresh func()) {
 
 				g.commandQueue <- MoveDown
 			case MoveDown:
+				prev.y = g.state.lastBlock.y
 				g.state.lastBlock.y += 1
 
-				if g.state.isCellsValid(*last) && g.state.isCellsFree(*last) {
+				if g.state.isCellsValid(*last) {
 					g.commandQueue <- Place
 					go time.AfterFunc(500*time.Millisecond, func() {
 						g.commandQueue <- MoveDown
 					})
 				} else {
 					g.state.addBlock(prev)
-
 					g.state.lastBlock = nil
 
 					g.commandQueue <- Generate
@@ -219,6 +202,7 @@ func (g *TetrisFacade) processCommands(refresh func()) {
 }
 
 func generateBlock() Block {
+
 	Pink := color.RGBA{245, 40, 145, 255}
 	return Block{
 		[][]bool{
