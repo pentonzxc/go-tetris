@@ -1,6 +1,7 @@
 package tetris
 
 import (
+	"fmt"
 	"image"
 	"image/color"
 	"time"
@@ -111,6 +112,7 @@ func (s *TetrisState) isCellsFree(block Block) bool {
 					return false // Out of bounds
 				}
 				if s.blocks[cellY][cellX] {
+					fmt.Println(cellY, cellX)
 					return false // Cell is occupied
 				}
 			}
@@ -162,6 +164,7 @@ func (g *TetrisFacade) processCommands(refresh func()) {
 				rotated := g.drawer.Rotate(*last)
 				if g.state.isCellsValid(rotated) && g.state.isCellsFree(rotated) {
 					g.drawer.UndoBlock(*last)
+					g.drawer.UndoBlock(prev)
 					g.drawer.DrawBlock(rotated)
 
 					g.state.lastBlock = &rotated
@@ -170,6 +173,7 @@ func (g *TetrisFacade) processCommands(refresh func()) {
 				moved := g.drawer.MoveLeft(*last)
 				if g.state.isCellsValid(moved) && g.state.isCellsFree(moved) {
 					g.drawer.UndoBlock(*last)
+					g.drawer.UndoBlock(prev)
 					g.drawer.DrawBlock(moved)
 
 					g.state.lastBlock = &moved
@@ -178,35 +182,30 @@ func (g *TetrisFacade) processCommands(refresh func()) {
 				moved := g.drawer.MoveRight(*last)
 				if g.state.isCellsValid(moved) && g.state.isCellsFree(moved) {
 					g.drawer.UndoBlock(*last)
+					g.drawer.UndoBlock(prev)
 					g.drawer.DrawBlock(moved)
 
 					g.state.lastBlock = &moved
 				}
 			case Place:
-				// fmt.Println("Place command", *last)
 				g.drawer.UndoBlock(prev)
 				g.drawer.DrawBlock(*last)
-
-				last.y += 1
-
 			case Generate:
-				// fmt.Println("Generate command")
 				new := generateBlock()
 				g.state.lastBlock = &new
 
 				g.commandQueue <- MoveDown
 			case MoveDown:
-				// fmt.Println("MoveDown command")
+				g.state.lastBlock.y += 1
 
-				if !(g.state.isCellsValid(*last) && g.state.isCellsFree(*last)) {
-
+				if g.state.isCellsValid(*last) && g.state.isCellsFree(*last) {
+					g.commandQueue <- Place
+					g.commandQueue <- MoveDown
+				} else {
 					g.state.addBlock(prev)
 
 					g.state.lastBlock = nil
 					g.commandQueue <- Generate
-				} else {
-					g.commandQueue <- Place
-					g.commandQueue <- MoveDown
 				}
 
 				time.Sleep(200 * time.Millisecond)
@@ -226,7 +225,7 @@ func generateBlock() Block {
 			{true, true},
 		},
 		TETRIS_WIDTH / 2,
-		0,
+		-1,
 		Pink,
 	}
 }
