@@ -1,8 +1,10 @@
 package tetris
 
 import (
+	"fmt"
 	"image"
 	"image/color"
+	"math/rand"
 	"time"
 
 	"fyne.io/fyne/v2"
@@ -19,6 +21,85 @@ const (
 	MoveDown  Command = "moveDown"
 	Place     Command = "place"
 	Generate  Command = "generate"
+)
+
+type Shape Block
+
+const StartY = -1
+
+var (
+	OShape = Shape{
+		blocks: [][]bool{{true, true}, {true, true}},
+		x:      TETRIS_WIDTH/2 - 1,
+		y:      StartY,
+		color:  color.RGBA{255, 255, 0, 255},
+	}
+
+	IShape = Shape{
+		blocks: [][]bool{
+			{false, true, false, false},
+			{false, true, false, false},
+			{false, true, false, false},
+			{false, true, false, false},
+		},
+		x:     TETRIS_WIDTH / 2,
+		y:     StartY,
+		color: color.RGBA{107, 202, 226, 255},
+	}
+
+	SShape = Shape{
+		blocks: [][]bool{
+			{false, false, false},
+			{false, true, true},
+			{true, true, false},
+		},
+		x:     TETRIS_WIDTH/2 - 1,
+		y:     StartY,
+		color: color.RGBA{255, 0, 0, 255},
+	}
+
+	ZShape = Shape{
+		blocks: [][]bool{
+			{false, false, false},
+			{true, true, false},
+			{false, true, true},
+		},
+		x:     TETRIS_WIDTH/2 - 1,
+		y:     StartY,
+		color: color.RGBA{0, 128, 0, 255},
+	}
+	LShape = Shape{
+		blocks: [][]bool{
+			{true, false, false},
+			{true, false, false},
+			{true, true, false},
+		},
+		x:     TETRIS_WIDTH/2 - 1,
+		y:     StartY,
+		color: color.RGBA{255, 165, 0, 255},
+	}
+
+	JShape = Shape{
+		blocks: [][]bool{
+			{false, false, true},
+			{false, false, true},
+			{false, true, true},
+		},
+		x:     TETRIS_WIDTH/2 - 1,
+		y:     StartY,
+		color: color.RGBA{255, 105, 180, 255},
+	}
+
+	TShape = Shape{
+		blocks: [][]bool{
+			{false, false, false},
+			{true, true, true},
+			{false, true, false},
+		},
+		x:     TETRIS_WIDTH/2 - 1,
+		y:     StartY,
+		color: color.RGBA{128, 0, 128, 255},
+	}
 )
 
 type Block struct {
@@ -171,6 +252,7 @@ func (g *TetrisFacade) processCommands(refresh func()) {
 					g.state.lastBlock = &moved
 				}
 			case Place:
+				fmt.Println("Place a block", *last)
 				g.drawer.UndoBlock(prev)
 				g.drawer.DrawBlock(*last)
 			case Generate:
@@ -184,7 +266,7 @@ func (g *TetrisFacade) processCommands(refresh func()) {
 
 				if g.state.isCellsValid(*last) {
 					g.commandQueue <- Place
-					go time.AfterFunc(500*time.Millisecond, func() {
+					go time.AfterFunc(250*time.Millisecond, func() {
 						g.commandQueue <- MoveDown
 					})
 				} else {
@@ -202,17 +284,51 @@ func (g *TetrisFacade) processCommands(refresh func()) {
 }
 
 func generateBlock() Block {
+	randomNum := rand.Int() % 7
+	var block Block
+	var copy Block
 
-	Pink := color.RGBA{245, 40, 145, 255}
-	return Block{
-		[][]bool{
-			{true, false},
-			{true, true},
-		},
-		TETRIS_WIDTH / 2,
-		-1,
-		Pink,
+	switch randomNum {
+	case 0:
+		block = Block(TShape)
+	case 1:
+		block = Block(OShape)
+	case 2:
+		block = Block(IShape)
+	case 3:
+		block = Block(SShape)
+	case 4:
+		block = Block(ZShape)
+	case 5:
+		block = Block(LShape)
+	case 6:
+		block = Block(JShape)
 	}
+
+	copy = block
+	copy.blocks = make([][]bool, len(block.blocks))
+
+	for i := range block.blocks {
+		copy.blocks[i] = make([]bool, len(block.blocks[0]))
+		for j := range copy.blocks[0] {
+			copy.blocks[j] = block.blocks[j]
+		}
+	}
+
+	fmt.Println("copy", copy)
+
+	return copy
+
+	// Pink := color.RGBA{245, 40, 145, 255}
+	// return Block{
+	// 	[][]bool{
+	// 		{true, false},
+	// 		{true, true},
+	// 	},
+	// 	TETRIS_WIDTH / 2,
+	// 	-1,
+	// 	Pink,
+	// }
 }
 
 func (g *TetrisFacade) Points() int {
