@@ -33,8 +33,8 @@ type TetrisDrawer struct {
 func (drawer *TetrisDrawer) DrawBlock(block Block) {
 	for y := 0; y < len(block.blocks); y++ {
 		for x := 0; x < len(block.blocks[0]); x++ {
-			if block.blocks[y][x] {
-				drawer.drawCell(BlockPosition{block.x + x, block.y + y}, block.color)
+			if block.blocks[y][x].free {
+				drawer.drawCell(BlockPosition{block.x + x, block.y + y}, block.blocks[y][x].color)
 			}
 		}
 	}
@@ -43,7 +43,7 @@ func (drawer *TetrisDrawer) DrawBlock(block Block) {
 func (drawer *TetrisDrawer) UndoBlock(block Block) {
 	for y := 0; y < len(block.blocks); y++ {
 		for x := 0; x < len(block.blocks[0]); x++ {
-			if block.blocks[y][x] {
+			if block.blocks[y][x].free {
 				drawer.drawCell(BlockPosition{block.x + x, block.y + y}, color.White)
 			}
 		}
@@ -51,9 +51,9 @@ func (drawer *TetrisDrawer) UndoBlock(block Block) {
 }
 
 func (drawer *TetrisDrawer) Rotate(block Block) Block {
-	rotated := make([][]bool, len(block.blocks))
+	rotated := make([][]Cell, len(block.blocks))
 	for i := range rotated {
-		rotated[i] = make([]bool, len(block.blocks[0]))
+		rotated[i] = make([]Cell, len(block.blocks[0]))
 		copy(rotated[i], block.blocks[i])
 	}
 
@@ -70,7 +70,7 @@ func (drawer *TetrisDrawer) Rotate(block Block) Block {
 		}
 	}
 
-	return Block{blocks: rotated, x: block.x, y: block.y, color: block.color}
+	return Block{blocks: rotated, x: block.x, y: block.y}
 }
 
 func (drawer *TetrisDrawer) MoveLeft(block Block) Block {
