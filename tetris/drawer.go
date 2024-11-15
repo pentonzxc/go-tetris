@@ -1,6 +1,7 @@
 package tetris
 
 import (
+	"fmt"
 	"image"
 	"image/color"
 )
@@ -10,10 +11,6 @@ const (
 	TETRIS_HEIGHT = 20
 )
 
-type BlockPosition struct {
-	x, y int
-}
-
 type Drawer interface {
 	UndoBlock(Block)
 	DrawBlock(Block)
@@ -22,6 +19,7 @@ type Drawer interface {
 	MoveRight(Block) Block
 	Refresh()
 	Init() *image.RGBA
+	DrawCell(pos image.Point, color color.Color)
 }
 
 type TetrisDrawer struct {
@@ -31,30 +29,31 @@ type TetrisDrawer struct {
 }
 
 func (drawer *TetrisDrawer) DrawBlock(block Block) {
-	for y := 0; y < len(block.blocks); y++ {
-		for x := 0; x < len(block.blocks[0]); x++ {
-			if block.blocks[y][x].free {
-				drawer.drawCell(BlockPosition{block.x + x, block.y + y}, block.blocks[y][x].color)
+	for y := 0; y < len(block.cells); y++ {
+		for x := 0; x < len(block.cells[0]); x++ {
+			if block.cells[y][x].NonEmpty {
+				fmt.Printf("draw point - %v\n", image.Point{block.x + x, block.y + y})
+				drawer.DrawCell(image.Point{block.x + x, block.y + y}, block.cells[y][x].color)
 			}
 		}
 	}
 }
 
 func (drawer *TetrisDrawer) UndoBlock(block Block) {
-	for y := 0; y < len(block.blocks); y++ {
-		for x := 0; x < len(block.blocks[0]); x++ {
-			if block.blocks[y][x].free {
-				drawer.drawCell(BlockPosition{block.x + x, block.y + y}, color.White)
+	for y := 0; y < len(block.cells); y++ {
+		for x := 0; x < len(block.cells[0]); x++ {
+			if block.cells[y][x].NonEmpty {
+				drawer.DrawCell(image.Point{block.x + x, block.y + y}, color.White)
 			}
 		}
 	}
 }
 
 func (drawer *TetrisDrawer) Rotate(block Block) Block {
-	rotated := make([][]Cell, len(block.blocks))
+	rotated := make([][]Cell, len(block.cells))
 	for i := range rotated {
-		rotated[i] = make([]Cell, len(block.blocks[0]))
-		copy(rotated[i], block.blocks[i])
+		rotated[i] = make([]Cell, len(block.cells[0]))
+		copy(rotated[i], block.cells[i])
 	}
 
 	matrix := rotated
@@ -70,7 +69,7 @@ func (drawer *TetrisDrawer) Rotate(block Block) Block {
 		}
 	}
 
-	return Block{blocks: rotated, x: block.x, y: block.y}
+	return Block{cells: rotated, x: block.x, y: block.y}
 }
 
 func (drawer *TetrisDrawer) MoveLeft(block Block) Block {
@@ -87,11 +86,11 @@ func (drawer *TetrisDrawer) Refresh() {
 	drawer.refresh()
 }
 
-func (drawer *TetrisDrawer) drawCell(pos BlockPosition, color color.Color) {
-	x1 := pos.x*drawer.dx + 1
-	x2 := (pos.x + 1) * drawer.dx
-	y1 := pos.y*drawer.dy + 1
-	y2 := (pos.y + 1) * drawer.dy
+func (drawer *TetrisDrawer) DrawCell(pos image.Point, color color.Color) {
+	x1 := pos.X*drawer.dx + 1
+	x2 := (pos.X + 1) * drawer.dx
+	y1 := pos.Y*drawer.dy + 1
+	y2 := (pos.Y + 1) * drawer.dy
 
 	for y := y1; y < y2; y++ {
 		for x := x1; x < x2; x++ {

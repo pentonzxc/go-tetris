@@ -4,7 +4,10 @@ import (
 	"fmt"
 	"image"
 	"image/color"
+	"log"
+	"math"
 	"math/rand"
+	"sync"
 	"time"
 
 	"fyne.io/fyne/v2"
@@ -46,12 +49,12 @@ var (
 func Shape(blocks [][]bool, x int, y int, color color.Color) Block {
 	var res Block
 
-	res.blocks = make([][]Cell, len(blocks))
+	res.cells = make([][]Cell, len(blocks))
 	for y := range len(blocks) {
-		res.blocks[y] = make([]Cell, len(blocks[0]))
+		res.cells[y] = make([]Cell, len(blocks[0]))
 
 		for x := range len(blocks[0]) {
-			res.blocks[y][x] = Cell{blocks[y][x], color}
+			res.cells[y][x] = Cell{blocks[y][x], color}
 		}
 	}
 
@@ -139,13 +142,13 @@ var (
 )
 
 type Cell struct {
-	free  bool
-	color color.Color
+	NonEmpty bool
+	color    color.Color
 }
 
 type Block struct {
-	blocks [][]Cell
-	x, y   int
+	cells [][]Cell
+	x, y  int
 }
 
 type Tetris interface {
@@ -155,7 +158,7 @@ type Tetris interface {
 }
 
 type TetrisState struct {
-	blocks     [][]bool
+	cells      [][]Cell
 	score      int
 	isGameOver bool
 
@@ -182,42 +185,51 @@ func NewTetrisGame(w, h int) Tetris {
 }
 
 func newTetrisState() TetrisState {
-	arr := make([][]bool, TETRIS_HEIGHT)
+	cells := make([][]Cell, TETRIS_HEIGHT)
 	for i := 0; i < TETRIS_HEIGHT; i++ {
-		arr[i] = make([]bool, TETRIS_WIDTH)
+		cells[i] = make([]Cell, TETRIS_WIDTH)
 	}
 
 	return TetrisState{
-		blocks:     arr,
+		cells:      cells,
 		score:      0,
 		isGameOver: false,
 	}
 }
 
 func (s *TetrisState) addBlock(block Block) {
-	for y := 0; y < len(block.blocks); y++ {
-		for x := 0; x < len(block.blocks[0]); x++ {
-			if block.blocks[y][x].free {
-				s.blocks[block.y+y][block.x+x] = true
+	for y := 0; y < len(block.cells); y++ {
+		for x := 0; x < len(block.cells[0]); x++ {
+
+			if block.cells[y][x].NonEmpty {
+				s.cells[block.y+y][block.x+x] = block.cells[y][x]
 			}
+
 		}
 	}
 }
 
 // check borders and free of cells
 func (s *TetrisState) isCellsValid(block Block) bool {
-	for y := 0; y < len(block.blocks); y++ {
-		for x := 0; x < len(block.blocks[0]); x++ {
-			if block.blocks[y][x].free {
+	for y := 0; y < len(block.cells); y++ {
+		for x := 0; x < len(block.cells[0]); x++ {
+
+			if block.cells[y][x].NonEmpty {
 				cellY, cellX := block.y+y, block.x+x
+
+				// border check
 				if cellY < 0 || cellY >= TETRIS_HEIGHT || cellX < 0 || cellX >= TETRIS_WIDTH {
-					return false // Out of bounds
+					fmt.Printf("len - %v, y - %v\n", cellY, len(block.cells))
+					return false
 				}
 
-				if s.blocks[cellY][cellX] {
-					return false // Cell is occupied
+				// freeness check
+				if s.cells[cellY][cellX].NonEmpty {
+					fmt.Println("here")
+					return false
 				}
 			}
+
 		}
 	}
 
@@ -245,6 +257,8 @@ func (g *TetrisFacade) Start() {
 
 	})
 
+	g.testRowCollapse()
+
 	go g.processCommands(func() { w.Canvas().Content().Refresh() })
 	g.commandQueue <- Generate
 
@@ -253,7 +267,7 @@ func (g *TetrisFacade) Start() {
 
 func (g *TetrisFacade) processCommands(refresh func()) {
 	for command := range g.commandQueue {
-		if g.state.lastBlock != nil || command == Generate {
+		if g.state.lastBlock != nil || command == Generate || command == RowCollapse {
 			var prev Block
 			last := g.state.lastBlock
 
@@ -293,39 +307,77 @@ func (g *TetrisFacade) processCommands(refresh func()) {
 				}
 			case RowCollapse:
 				for {
-					removed := make([]int, 5)
+					log.Println("called RowCollapse")
+					removed := make([]int, 0)
 
-					for y := range g.state.blocks {
+					for y := range g.state.cells {
 						full := true
 
-						for x := range g.state.blocks[y] {
-							full = full && g.state.blocks[y][x]
+						for x := range g.state.cells[y] {
+							full = full && g.state.cells[y][x].NonEmpty
 						}
 
 						if full {
-							_ = append(removed, y)
+							removed = append(removed, y)
+
+							for x := range g.state.cells[y] {
+								g.state.cells[y][x] = Cell{}
+								g.drawer.DrawCell(image.Point{x, y}, color.White)
+							}
+
 						}
 					}
 
-					for {
-						// maybe not init with size,
-						visited := make(map[image.Point]bool, 10)
-						lagged := make([]Block, 10)
-						for y := removed[len(removed)-1] + 1; y >= 0; y++ {
-							for x := 0; x < TETRIS_WIDTH; x++ {
-								if g.state.blocks[y][x] {
-									_ = append(lagged, findLaggedBlock(x, y, visited))
-								}
+					log.Printf("removed arr - %v\n", removed)
+
+					// exit case
+					if len(removed) == 0 {
+						break
+					}
+
+					visited := make(map[image.Point]bool, 0)
+					lagged := make([]Block, 0)
+
+					for y := removed[0] - 1; y >= 0; y-- {
+						for x := 0; x < TETRIS_WIDTH; x++ {
+							if g.state.cells[y][x].NonEmpty {
+								lagged = append(lagged, findLaggedBlock(x, y, visited, g.state))
 							}
 						}
 					}
 
-					if len(removed) == 0 {
-						// return and update state
+					var wg sync.WaitGroup
+
+					wg.Add(len(lagged))
+
+					for i := range lagged {
+						fmt.Printf("lagged - %v\n", lagged[i])
+
+						go func() {
+							block := lagged[i]
+							for {
+								var prev = block
+								block.y += 1
+								fmt.Println(block.y)
+
+								if g.state.isCellsValid(block) {
+									time.Sleep(10 * time.Millisecond)
+									g.drawer.UndoBlock(prev)
+									g.drawer.DrawBlock(block)
+									refresh()
+								} else {
+									g.state.addBlock(prev)
+									wg.Done()
+									break
+								}
+							}
+						}()
 					}
+
+					wg.Wait()
 				}
 			case Place:
-				fmt.Println("Place a block", *last)
+				// fmt.Println("Place a block", *last)
 				g.drawer.UndoBlock(prev)
 				g.drawer.DrawBlock(*last)
 			case Generate:
@@ -346,7 +398,8 @@ func (g *TetrisFacade) processCommands(refresh func()) {
 					g.state.addBlock(prev)
 					g.state.lastBlock = nil
 
-					// g.commandQueue <- RowCollapse
+					fmt.Println("go to next block")
+					g.commandQueue <- RowCollapse
 					g.commandQueue <- Generate
 				}
 			}
@@ -357,10 +410,84 @@ func (g *TetrisFacade) processCommands(refresh func()) {
 
 }
 
-func findLaggedBlock(x, y int, visited map[image.Point]bool) Block {
+func findLaggedBlock(x, y int, visited map[image.Point]bool, state TetrisState) Block {
+	var (
+		res   Block
+		queue []image.Point  = make([]image.Point, 0)
+		ways  [4]image.Point = [4]image.Point{
+			image.Point{1, 0},
+			image.Point{0, 1},
+			image.Point{-1, 0},
+			image.Point{0, -1},
+		}
+		minX, minY int = x, y
+		maxX, maxY int = x, y
+	)
 
-	return Block{}
+	tmpCells := make([][]Cell, TETRIS_HEIGHT)
 
+	for y := range tmpCells {
+		tmpCells[y] = make([]Cell, TETRIS_WIDTH)
+	}
+
+	tmpCells[y][x] = state.cells[y][x]
+
+	queue = append(queue, image.Point{x, y})
+	for len(queue) > 0 {
+		p := queue[0]
+		fmt.Println(p)
+		queue = queue[1:]
+
+		if !visited[p] {
+			for _, way := range ways {
+				newP := p.Add(way)
+				if newP.X >= 0 && newP.X < TETRIS_WIDTH &&
+					newP.Y >= 0 && newP.Y < TETRIS_HEIGHT &&
+					state.cells[newP.Y][newP.X].NonEmpty {
+
+					minX = int(math.Min(float64(minX), float64(newP.X)))
+					minY = int(math.Min(float64(minY), float64(newP.Y)))
+					maxX = int(math.Max(float64(maxX), float64(newP.X)))
+					maxY = int(math.Max(float64(maxY), float64(newP.Y)))
+
+					tmpCells[newP.Y][newP.X] = state.cells[newP.Y][newP.X]
+					state.cells[newP.Y][newP.X] = Cell{}
+
+					queue = append(queue, newP)
+				}
+			}
+
+			visited[p] = true
+		}
+	}
+
+	// fmt.Printf("max x - %v\n", maxX)
+	// fmt.Printf("min x - %v\n", minX)
+	// fmt.Printf("max y - %v\n", maxY)
+	// fmt.Printf("min y - %v\n", minY)
+
+	size := int(math.Max(float64(maxX-minX+1), float64(maxY-minY+1)))
+
+	res.cells = make([][]Cell, size)
+	for dy := 0; dy < size; dy++ {
+		res.cells[dy] = make([]Cell, size)
+		for dx := 0; dx < size; dx++ {
+			cellX := minX + dx
+			cellY := minY + dy
+			if cellX >= minX && cellX <= maxX && cellY >= minY && cellY <= maxY {
+				res.cells[dy][dx] = tmpCells[cellY][cellX]
+			} else {
+				// Fill empty cells with default (non-empty = false)
+				res.cells[dy][dx] = Cell{}
+			}
+		}
+	}
+
+	// Set the block's position
+	res.x = minX
+	res.y = minY
+
+	return res
 }
 
 func generateBlock() Block {
@@ -388,13 +515,15 @@ func generateBlock() Block {
 	}
 
 	copy = block
-	copy.blocks = make([][]Cell, len(block.blocks))
+	copy.cells = make([][]Cell, len(block.cells))
 
-	for i := range block.blocks {
-		copy.blocks[i] = make([]Cell, len(block.blocks[0]))
-		for j := range copy.blocks[0] {
-			copy.blocks[j] = block.blocks[j]
+	for i := range block.cells {
+		copy.cells[i] = make([]Cell, len(block.cells[0]))
+
+		for j := range copy.cells[0] {
+			copy.cells[j] = block.cells[j]
 		}
+
 	}
 
 	return copy
@@ -406,4 +535,13 @@ func (g *TetrisFacade) Points() int {
 
 func (g *TetrisFacade) IsOver() bool {
 	return g.state.isGameOver
+}
+
+func (g *TetrisFacade) testRowCollapse() {
+	for y := len(g.state.cells) - 1; y >= len(g.state.cells)-2; y-- {
+		for x := 0; x < len(g.state.cells[0]); x++ {
+			g.state.cells[y][x] = Cell{true, color.RGBA{0, 128, 0, 255}}
+			g.drawer.DrawCell(image.Point{x, y}, g.state.cells[y][x].color)
+		}
+	}
 }
