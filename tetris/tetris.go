@@ -1,7 +1,6 @@
 package tetris
 
 import (
-	"fmt"
 	"image"
 	"image/color"
 	"log"
@@ -101,7 +100,7 @@ func (g *tetrisFacade) processCommands(refresh func()) {
 				}
 			case rowCollapse:
 				for {
-					removed := make([]int, 0)
+					var removed []int
 
 					for y := range g.state.cells {
 						full := true
@@ -121,7 +120,7 @@ func (g *tetrisFacade) processCommands(refresh func()) {
 						}
 					}
 
-					log.Printf("removed arr - %v\n", removed)
+					log.Printf("rowCollapse: removed arr - %v\n", removed)
 
 					// exit case
 					if len(removed) == 0 {
@@ -144,14 +143,13 @@ func (g *tetrisFacade) processCommands(refresh func()) {
 					wg.Add(len(lagged))
 
 					for i := range lagged {
-						fmt.Printf("lagged - %v\n", lagged[i])
+						log.Printf("rowCollapse: lagged - %v\n", lagged[i])
 
 						go func() {
 							block := lagged[i]
 							for {
 								var prev = block
 								block.y += 1
-								fmt.Println(block.y)
 
 								if g.state.isCellsValid(block) {
 									time.Sleep(10 * time.Millisecond)
@@ -190,7 +188,6 @@ func (g *tetrisFacade) processCommands(refresh func()) {
 					g.state.addBlock(prev)
 					g.state.fallingBlock = nil
 
-					fmt.Println("go to next block")
 					g.commandQueue <- rowCollapse
 					g.commandQueue <- generate
 				}
@@ -252,10 +249,10 @@ func findLaggedBlock(x, y int, visited map[image.Point]bool, state tetrisState) 
 		}
 	}
 
-	// fmt.Printf("max x - %v\n", maxX)
-	// fmt.Printf("min x - %v\n", minX)
-	// fmt.Printf("max y - %v\n", maxY)
-	// fmt.Printf("min y - %v\n", minY)
+	// log.Printf("max x - %v\n", maxX)
+	// log.Printf("min x - %v\n", minX)
+	// log.Printf("max y - %v\n", maxY)
+	// log.Printf("min y - %v\n", minY)
 
 	size := int(math.Max(float64(maxX-minX+1), float64(maxY-minY+1)))
 
