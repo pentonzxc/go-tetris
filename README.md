@@ -1,8 +1,9 @@
-first project in Golang
+first project in Go
 
-FIXES:
+## NEED TO FIX:
 - sometimes row collapse are buggy
-ADD:
+
+## FEATURES TO ADD:
 - score
 - game over popup
 - place block immediatly on `Space` keyword
