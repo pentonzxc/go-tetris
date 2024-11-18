@@ -6,32 +6,25 @@ import (
 	"image/color"
 )
 
-const (
-	TETRIS_WIDTH  = 10
-	TETRIS_HEIGHT = 20
-)
-
-type Drawer interface {
-	UndoBlock(Block)
-	DrawBlock(Block)
-	Rotate(Block) Block
-	MoveLeft(Block) Block
-	MoveRight(Block) Block
-	Refresh()
+type drawer interface {
+	UndoBlock(block)
+	DrawBlock(block)
+	Rotate(block) block
+	MoveLeft(block) block
+	MoveRight(block) block
 	Init() *image.RGBA
 	DrawCell(pos image.Point, color color.Color)
 }
 
-type TetrisDrawer struct {
-	image   *image.RGBA
-	dx, dy  int
-	refresh func()
+type tetrisDrawer struct {
+	image  *image.RGBA
+	dx, dy int
 }
 
-func (drawer *TetrisDrawer) DrawBlock(block Block) {
+func (drawer *tetrisDrawer) DrawBlock(block block) {
 	for y := 0; y < len(block.cells); y++ {
 		for x := 0; x < len(block.cells[0]); x++ {
-			if block.cells[y][x].NonEmpty {
+			if block.cells[y][x].taken {
 				fmt.Printf("draw point - %v\n", image.Point{block.x + x, block.y + y})
 				drawer.DrawCell(image.Point{block.x + x, block.y + y}, block.cells[y][x].color)
 			}
@@ -39,20 +32,20 @@ func (drawer *TetrisDrawer) DrawBlock(block Block) {
 	}
 }
 
-func (drawer *TetrisDrawer) UndoBlock(block Block) {
+func (drawer *tetrisDrawer) UndoBlock(block block) {
 	for y := 0; y < len(block.cells); y++ {
 		for x := 0; x < len(block.cells[0]); x++ {
-			if block.cells[y][x].NonEmpty {
+			if block.cells[y][x].taken {
 				drawer.DrawCell(image.Point{block.x + x, block.y + y}, color.White)
 			}
 		}
 	}
 }
 
-func (drawer *TetrisDrawer) Rotate(block Block) Block {
-	rotated := make([][]Cell, len(block.cells))
+func (drawer *tetrisDrawer) Rotate(block block) block {
+	rotated := make([][]cell, len(block.cells))
 	for i := range rotated {
-		rotated[i] = make([]Cell, len(block.cells[0]))
+		rotated[i] = make([]cell, len(block.cells[0]))
 		copy(rotated[i], block.cells[i])
 	}
 
@@ -62,31 +55,26 @@ func (drawer *TetrisDrawer) Rotate(block Block) Block {
 		matrix[i], matrix[j] = matrix[j], matrix[i]
 	}
 
-	// transpose it
-	for i := 0; i < len(matrix); i++ {
+	for i := range matrix {
 		for j := 0; j < i; j++ {
 			matrix[i][j], matrix[j][i] = matrix[j][i], matrix[i][j]
 		}
 	}
 
-	return Block{cells: rotated, x: block.x, y: block.y}
+	return newBlock(rotated, block.x, block.y)
 }
 
-func (drawer *TetrisDrawer) MoveLeft(block Block) Block {
+func (drawer *tetrisDrawer) MoveLeft(block block) block {
 	block.x -= 1
 	return block
 }
 
-func (drawer *TetrisDrawer) MoveRight(block Block) Block {
+func (drawer *tetrisDrawer) MoveRight(block block) block {
 	block.x += 1
 	return block
 }
 
-func (drawer *TetrisDrawer) Refresh() {
-	drawer.refresh()
-}
-
-func (drawer *TetrisDrawer) DrawCell(pos image.Point, color color.Color) {
+func (drawer *tetrisDrawer) DrawCell(pos image.Point, color color.Color) {
 	x1 := pos.X*drawer.dx + 1
 	x2 := (pos.X + 1) * drawer.dx
 	y1 := pos.Y*drawer.dy + 1
@@ -99,7 +87,7 @@ func (drawer *TetrisDrawer) DrawCell(pos image.Point, color color.Color) {
 	}
 }
 
-func (drawer *TetrisDrawer) Init() *image.RGBA {
+func (drawer *tetrisDrawer) Init() *image.RGBA {
 	x1 := drawer.image.Rect.Max.X
 	y1 := drawer.image.Rect.Max.Y
 
@@ -120,12 +108,11 @@ func (drawer *TetrisDrawer) Init() *image.RGBA {
 	return drawer.image
 }
 
-func newTetrisDrawer(image *image.RGBA, refresh func()) Drawer {
+func newTetrisDrawer(image *image.RGBA) drawer {
 	point := image.Rect.Max
-	return &TetrisDrawer{
-		image:   image,
-		dx:      point.X / TETRIS_WIDTH,
-		dy:      point.Y / TETRIS_HEIGHT,
-		refresh: refresh,
+	return &tetrisDrawer{
+		image: image,
+		dx:    point.X / tetrisWidth,
+		dy:    point.Y / tetrisHeight,
 	}
 }

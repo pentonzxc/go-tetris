@@ -5,7 +5,7 @@ import (
 )
 
 func main() {
-	game := tetris.NewTetrisGame(600, 800)
+	game := tetris.NewTetris(600, 800)
 
 	game.Start()
 }
