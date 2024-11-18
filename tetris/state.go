@@ -85,21 +85,3 @@ func (s *tetrisState) isCellsValid(block block) bool {
 
 	return true
 }
-
-func newShape(blocks [][]bool, color color.Color, x int) block {
-	var res block
-
-	res.cells = make([][]cell, len(blocks))
-	for y := range blocks {
-		res.cells[y] = make([]cell, len(blocks[y]))
-
-		for x := range blocks[y] {
-			res.cells[y][x] = cell{blocks[y][x], color}
-		}
-	}
-
-	res.x = x
-	// start position
-	res.y = -1
-	return res
-}

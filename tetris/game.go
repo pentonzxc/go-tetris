@@ -5,7 +5,6 @@ import (
 	"image/color"
 	"log"
 	"math"
-	"math/rand"
 	"sync"
 	"time"
 
@@ -72,7 +71,7 @@ func (g *tetrisFacade) processCommands(refresh func()) {
 
 			switch command {
 			case rotate:
-				rotated := g.drawer.Rotate(*last)
+				rotated := last.rotate()
 				if g.state.isCellsValid(rotated) {
 					g.drawer.UndoBlock(*last)
 					g.drawer.UndoBlock(prev)
@@ -81,7 +80,7 @@ func (g *tetrisFacade) processCommands(refresh func()) {
 					g.state.fallingBlock = &rotated
 				}
 			case moveLeft:
-				moved := g.drawer.MoveLeft(*last)
+				moved := last.moveLeft()
 				if g.state.isCellsValid(moved) {
 					g.drawer.UndoBlock(*last)
 					g.drawer.UndoBlock(prev)
@@ -90,7 +89,7 @@ func (g *tetrisFacade) processCommands(refresh func()) {
 					g.state.fallingBlock = &moved
 				}
 			case moveRight:
-				moved := g.drawer.MoveRight(*last)
+				moved := last.moveRight()
 				if g.state.isCellsValid(moved) {
 					g.drawer.UndoBlock(*last)
 					g.drawer.UndoBlock(prev)
@@ -276,42 +275,6 @@ func findLaggedBlock(x, y int, visited map[image.Point]bool, state tetrisState) 
 	res.y = minY
 
 	return res
-}
-
-func generateBlock() block {
-	var block, copy block
-	randomNum := rand.Int() % 7
-
-	switch randomNum {
-	case 0:
-		block = tShape
-	case 1:
-		block = oShape
-	case 2:
-		block = iShape
-	case 3:
-		block = sShape
-	case 4:
-		block = zShape
-	case 5:
-		block = lShape
-	case 6:
-		block = jShape
-	}
-
-	copy = block
-	copy.cells = make([][]cell, len(block.cells))
-
-	for i := range block.cells {
-		copy.cells[i] = make([]cell, len(block.cells[0]))
-
-		for j := range copy.cells[0] {
-			copy.cells[j] = block.cells[j]
-		}
-
-	}
-
-	return copy
 }
 
 func (g *tetrisFacade) Points() int {

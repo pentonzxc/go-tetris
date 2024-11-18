@@ -9,9 +9,6 @@ import (
 type drawer interface {
 	UndoBlock(block)
 	DrawBlock(block)
-	Rotate(block) block
-	MoveLeft(block) block
-	MoveRight(block) block
 	Init() *image.RGBA
 	DrawCell(pos image.Point, color color.Color)
 }
